@@ -1,836 +1,1209 @@
-import React, { useState, useEffect } from 'react';
-import { Play, Pause, RotateCcw, Plus, Trash2, Info, ChevronDown, ChevronUp } from 'lucide-react';
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador de Gerenciamento de Memória - UFAM</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-const MemoryManagementSimulator = () => {
-  const [activeTab, setActiveTab] = useState('paging');
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [speed, setSpeed] = useState(1000);
-  
-  // Estado para Paginação
-  const [pages, setPages] = useState([]);
-  const [pageFrames, setPageFrames] = useState(4);
-  const [memory, setMemory] = useState([]);
-  const [pageFaults, setPageFaults] = useState(0);
-  const [pageHits, setPageHits] = useState(0);
-  const [currentPageIndex, setCurrentPageIndex] = useState(0);
-  const [algorithm, setAlgorithm] = useState('FIFO');
-  const [pageHistory, setPageHistory] = useState([]);
-  
-  // Estado para Segmentação
-  const [segments, setSegments] = useState([]);
-  const [segmentMemory, setSegmentMemory] = useState(Array(16).fill(null));
-  const [nextSegmentId, setNextSegmentId] = useState(1);
-  
-  // Estado para Swapping
-  const [processes, setProcesses] = useState([]);
-  const [ramSlots, setRamSlots] = useState(Array(8).fill(null));
-  const [swapSpace, setSwapSpace] = useState([]);
-  const [nextProcessId, setNextProcessId] = useState(1);
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
 
-  // Informações expandidas
-  const [expandedInfo, setExpandedInfo] = useState({});
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            padding: 30px;
+        }
 
-  const toggleInfo = (section) => {
-    setExpandedInfo(prev => ({...prev, [section]: !prev[section]}));
-  };
+        header {
+            margin-bottom: 30px;
+        }
 
-  // Funções de Paginação
-  const addPage = () => {
-    const newPage = Math.floor(Math.random() * 10);
-    setPages([...pages, newPage]);
-  };
+        h1 {
+            color: #2c3e50;
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
 
-  const addMultiplePages = () => {
-    const sequence = [1, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5];
-    setPages(sequence);
-    resetPagingSimulation();
-  };
+        .subtitle {
+            color: #7f8c8d;
+            font-size: 0.95em;
+        }
 
-  const resetPagingSimulation = () => {
-    setMemory([]);
-    setPageFaults(0);
-    setPageHits(0);
-    setCurrentPageIndex(0);
-    setPageHistory([]);
-    setIsPlaying(false);
-  };
+        .tabs {
+            display: flex;
+            gap: 10px;
+            border-bottom: 2px solid #e0e0e0;
+            margin-bottom: 30px;
+        }
 
-  const simulatePageStep = () => {
-    if (currentPageIndex >= pages.length) {
-      setIsPlaying(false);
-      return;
-    }
+        .tab {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            font-size: 1em;
+            font-weight: 600;
+            color: #7f8c8d;
+            cursor: pointer;
+            border-bottom: 4px solid transparent;
+            transition: all 0.3s;
+        }
 
-    const page = pages[currentPageIndex];
-    const newMemory = [...memory];
-    let fault = false;
+        .tab:hover {
+            color: #2c3e50;
+        }
 
-    if (newMemory.find(p => p.page === page)) {
-      setPageHits(prev => prev + 1);
-      // Atualizar informações de acesso para LRU
-      if (algorithm === 'LRU') {
-        const index = newMemory.findIndex(p => p.page === page);
-        newMemory[index].lastUsed = currentPageIndex;
-      }
-    } else {
-      setPageFaults(prev => prev + 1);
-      fault = true;
+        .tab.active {
+            color: #3498db;
+            border-bottom-color: #3498db;
+        }
 
-      if (newMemory.length < pageFrames) {
-        newMemory.push({ page, loadedAt: currentPageIndex, lastUsed: currentPageIndex });
-      } else {
-        // Aplicar algoritmo de substituição
-        if (algorithm === 'FIFO') {
-          newMemory.shift();
-          newMemory.push({ page, loadedAt: currentPageIndex, lastUsed: currentPageIndex });
-        } else if (algorithm === 'LRU') {
-          const lruIndex = newMemory.reduce((minIdx, curr, idx, arr) => 
-            curr.lastUsed < arr[minIdx].lastUsed ? idx : minIdx, 0);
-          newMemory[lruIndex] = { page, loadedAt: currentPageIndex, lastUsed: currentPageIndex };
-        } else if (algorithm === 'OPT') {
-          // Optimal: substituir página que será usada mais tarde
-          let replaceIndex = 0;
-          let farthest = -1;
-          
-          newMemory.forEach((frame, idx) => {
-            let nextUse = pages.slice(currentPageIndex + 1).indexOf(frame.page);
-            if (nextUse === -1) nextUse = Infinity;
-            if (nextUse > farthest) {
-              farthest = nextUse;
-              replaceIndex = idx;
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .info-box {
+            background: #e8f4f8;
+            border: 1px solid #b8dce8;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 25px;
+        }
+
+        .info-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            font-weight: 600;
+            color: #1e5a7a;
+        }
+
+        .info-content {
+            margin-top: 12px;
+            color: #2c5f7a;
+            font-size: 0.9em;
+            line-height: 1.6;
+            display: none;
+        }
+
+        .info-content.show {
+            display: block;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 25px;
+        }
+
+        .card {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        .card h3 {
+            font-size: 1.2em;
+            margin-bottom: 20px;
+            color: #2c3e50;
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            font-size: 0.9em;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #2c3e50;
+        }
+
+        select, input[type="range"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.95em;
+        }
+
+        input[type="range"] {
+            padding: 0;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        button {
+            flex: 1;
+            padding: 10px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.9em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: #3498db;
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: #2980b9;
+        }
+
+        .btn-success {
+            background: #27ae60;
+            color: white;
+        }
+
+        .btn-success:hover:not(:disabled) {
+            background: #229954;
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background: #c0392b;
+        }
+
+        .btn-secondary {
+            background: #95a5a6;
+            color: white;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #7f8c8d;
+        }
+
+        .btn-warning {
+            background: #f39c12;
+            color: white;
+        }
+
+        .btn-warning:hover:not(:disabled) {
+            background: #e67e22;
+        }
+
+        .stats-box {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            text-align: center;
+        }
+
+        .stat-item {
+            padding: 10px;
+        }
+
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 0.85em;
+            color: #7f8c8d;
+        }
+
+        .memory-frame {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .frame-label {
+            width: 80px;
+            font-size: 0.9em;
+            font-weight: 600;
+        }
+
+        .frame-slot {
+            flex: 1;
+            height: 50px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1em;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .frame-slot.filled {
+            background: #3498db;
+            color: white;
+            border-color: #2980b9;
+        }
+
+        .frame-slot.empty {
+            background: #f8f9fa;
+            color: #bdc3c7;
+        }
+
+        .page-sequence {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 15px;
+        }
+
+        .page-item {
+            width: 45px;
+            height: 45px;
+            border: 2px solid;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+
+        .page-item.pending {
+            background: #ecf0f1;
+            border-color: #bdc3c7;
+            color: #7f8c8d;
+        }
+
+        .page-item.current {
+            background: #f1c40f;
+            border-color: #f39c12;
+            animation: pulse 1s infinite;
+        }
+
+        .page-item.hit {
+            background: #27ae60;
+            border-color: #229954;
+            color: white;
+        }
+
+        .page-item.fault {
+            background: #e74c3c;
+            border-color: #c0392b;
+            color: white;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        .segment-list, .process-list {
+            max-height: 450px;
+            overflow-y: auto;
+        }
+
+        .segment-item, .process-item {
+            padding: 15px;
+            border: 2px solid;
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+
+        .item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .item-title {
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+
+        .item-info {
+            font-size: 0.85em;
+            margin-bottom: 10px;
+            color: #555;
+        }
+
+        .memory-grid {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+
+        .memory-block {
+            height: 70px;
+            border: 2px solid;
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+
+        .memory-block.empty {
+            background: #f8f9fa;
+            border-color: #ddd;
+            color: #bdc3c7;
+        }
+
+        .block-index {
+            font-size: 0.7em;
+            color: #7f8c8d;
+            margin-bottom: 4px;
+        }
+
+        .ram-grid {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 8px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 12px;
+            background: #ecf0f1;
+            border-radius: 6px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #27ae60;
+            transition: width 0.3s;
+        }
+
+        .swap-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .swap-item {
+            padding: 20px;
+            border: 2px solid;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        footer {
+            margin-top: 40px;
+            padding-top: 25px;
+            border-top: 1px solid #e0e0e0;
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+
+        footer p {
+            margin: 5px 0;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+
+        .stat-card {
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        @media (max-width: 768px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
             }
-          });
-          
-          newMemory[replaceIndex] = { page, loadedAt: currentPageIndex, lastUsed: currentPageIndex };
+            
+            .memory-grid, .ram-grid {
+                grid-template-columns: repeat(4, 1fr);
+            }
         }
-      }
-    }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🖥️ Simulador de Gerenciamento de Memória</h1>
+            <p class="subtitle">UFAM - ICET | Sistemas Operacionais | Grupo 4</p>
+        </header>
 
-    setMemory(newMemory);
-    setPageHistory(prev => [...prev, { 
-      step: currentPageIndex, 
-      page, 
-      memory: [...newMemory], 
-      fault 
-    }]);
-    setCurrentPageIndex(prev => prev + 1);
-  };
-
-  // Funções de Segmentação
-  const addSegment = () => {
-    const sizes = [2, 3, 4];
-    const size = sizes[Math.floor(Math.random() * sizes.length)];
-    const colors = ['bg-blue-400', 'bg-green-400', 'bg-purple-400', 'bg-yellow-400', 'bg-pink-400'];
-    const color = colors[Math.floor(Math.random() * colors.length)];
-    
-    setSegments([...segments, { 
-      id: nextSegmentId, 
-      size, 
-      color, 
-      allocated: false,
-      base: null 
-    }]);
-    setNextSegmentId(prev => prev + 1);
-  };
-
-  const allocateSegment = (segmentId) => {
-    const segment = segments.find(s => s.id === segmentId);
-    if (!segment || segment.allocated) return;
-
-    // First Fit
-    let base = -1;
-    for (let i = 0; i <= segmentMemory.length - segment.size; i++) {
-      let fits = true;
-      for (let j = 0; j < segment.size; j++) {
-        if (segmentMemory[i + j] !== null) {
-          fits = false;
-          break;
-        }
-      }
-      if (fits) {
-        base = i;
-        break;
-      }
-    }
-
-    if (base !== -1) {
-      const newMemory = [...segmentMemory];
-      for (let i = 0; i < segment.size; i++) {
-        newMemory[base + i] = segmentId;
-      }
-      setSegmentMemory(newMemory);
-      setSegments(segments.map(s => 
-        s.id === segmentId ? { ...s, allocated: true, base } : s
-      ));
-    }
-  };
-
-  const deallocateSegment = (segmentId) => {
-    const newMemory = segmentMemory.map(slot => slot === segmentId ? null : slot);
-    setSegmentMemory(newMemory);
-    setSegments(segments.map(s => 
-      s.id === segmentId ? { ...s, allocated: false, base: null } : s
-    ));
-  };
-
-  const removeSegment = (segmentId) => {
-    deallocateSegment(segmentId);
-    setSegments(segments.filter(s => s.id !== segmentId));
-  };
-
-  // Funções de Swapping
-  const addProcess = () => {
-    const sizes = [1, 2, 3];
-    const size = sizes[Math.floor(Math.random() * sizes.length)];
-    const colors = ['bg-red-400', 'bg-blue-400', 'bg-green-400', 'bg-purple-400', 'bg-orange-400'];
-    const color = colors[Math.floor(Math.random() * colors.length)];
-    
-    const newProcess = {
-      id: nextProcessId,
-      size,
-      color,
-      location: 'disk',
-      ramBase: null
-    };
-    
-    setProcesses([...processes, newProcess]);
-    setNextProcessId(prev => prev + 1);
-  };
-
-  const swapIn = (processId) => {
-    const process = processes.find(p => p.id === processId);
-    if (!process || process.location === 'ram') return;
-
-    // Encontrar espaço na RAM
-    let base = -1;
-    for (let i = 0; i <= ramSlots.length - process.size; i++) {
-      let fits = true;
-      for (let j = 0; j < process.size; j++) {
-        if (ramSlots[i + j] !== null) {
-          fits = false;
-          break;
-        }
-      }
-      if (fits) {
-        base = i;
-        break;
-      }
-    }
-
-    if (base !== -1) {
-      const newRam = [...ramSlots];
-      for (let i = 0; i < process.size; i++) {
-        newRam[base + i] = processId;
-      }
-      setRamSlots(newRam);
-      setSwapSpace(swapSpace.filter(id => id !== processId));
-      setProcesses(processes.map(p => 
-        p.id === processId ? { ...p, location: 'ram', ramBase: base } : p
-      ));
-    }
-  };
-
-  const swapOut = (processId) => {
-    const newRam = ramSlots.map(slot => slot === processId ? null : slot);
-    setRamSlots(newRam);
-    setSwapSpace([...swapSpace, processId]);
-    setProcesses(processes.map(p => 
-      p.id === processId ? { ...p, location: 'swap', ramBase: null } : p
-    ));
-  };
-
-  const removeProcess = (processId) => {
-    const process = processes.find(p => p.id === processId);
-    if (process.location === 'ram') {
-      swapOut(processId);
-    }
-    setSwapSpace(swapSpace.filter(id => id !== processId));
-    setProcesses(processes.filter(p => p.id !== processId));
-  };
-
-  // Auto-play para paginação
-  useEffect(() => {
-    if (isPlaying && activeTab === 'paging') {
-      const timer = setTimeout(simulatePageStep, speed);
-      return () => clearTimeout(timer);
-    }
-  }, [isPlaying, currentPageIndex, speed]);
-
-  const InfoSection = ({ title, children, id }) => (
-    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-      <button 
-        onClick={() => toggleInfo(id)}
-        className="flex items-center justify-between w-full text-left"
-      >
-        <div className="flex items-center gap-2">
-          <Info size={16} className="text-blue-600" />
-          <span className="font-semibold text-blue-900">{title}</span>
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('paging')">Paginação</button>
+            <button class="tab" onclick="switchTab('segmentation')">Segmentação</button>
+            <button class="tab" onclick="switchTab('swapping')">Swapping</button>
         </div>
-        {expandedInfo[id] ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-      </button>
-      {expandedInfo[id] && (
-        <div className="mt-2 text-sm text-blue-800">{children}</div>
-      )}
-    </div>
-  );
 
-  return (
-    <div className="w-full max-w-7xl mx-auto p-6 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl shadow-lg">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-800 mb-2">
-          Simulador de Gerenciamento de Memória
-        </h1>
-        <p className="text-gray-600">
-          UFAM - ICET | Sistemas Operacionais | Grupo 4
-        </p>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-2 mb-6 border-b border-gray-300">
-        {[
-          { id: 'paging', label: 'Paginação' },
-          { id: 'segmentation', label: 'Segmentação' },
-          { id: 'swapping', label: 'Swapping' }
-        ].map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => {
-              setActiveTab(tab.id);
-              setIsPlaying(false);
-            }}
-            className={`px-6 py-3 font-semibold transition-colors ${
-              activeTab === tab.id
-                ? 'border-b-4 border-blue-600 text-blue-600'
-                : 'text-gray-600 hover:text-gray-800'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Paginação */}
-      {activeTab === 'paging' && (
-        <div className="space-y-6">
-          <InfoSection title="O que é Paginação?" id="paging-info">
-            <p className="mb-2">
-              A paginação divide a memória em blocos de tamanho fixo chamados <strong>páginas</strong> (memória lógica) 
-              e <strong>frames</strong> (memória física). Quando um processo precisa de uma página que não está na memória, 
-              ocorre um <strong>page fault</strong> e o sistema deve buscar a página.
-            </p>
-            <p>
-              <strong>Algoritmos de Substituição:</strong>
-            </p>
-            <ul className="list-disc ml-6 mt-1">
-              <li><strong>FIFO:</strong> Remove a página mais antiga (primeira a entrar)</li>
-              <li><strong>LRU:</strong> Remove a página menos recentemente usada</li>
-              <li><strong>OPT:</strong> Remove a página que será usada mais tarde (ótimo teórico)</li>
-            </ul>
-          </InfoSection>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Controles */}
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h3 className="font-bold text-lg mb-4">Controles</h3>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">
-                    Algoritmo de Substituição
-                  </label>
-                  <select
-                    value={algorithm}
-                    onChange={(e) => {
-                      setAlgorithm(e.target.value);
-                      resetPagingSimulation();
-                    }}
-                    className="w-full p-2 border rounded"
-                  >
-                    <option value="FIFO">FIFO (First In First Out)</option>
-                    <option value="LRU">LRU (Least Recently Used)</option>
-                    <option value="OPT">OPT (Optimal)</option>
-                  </select>
+        <!-- TAB: PAGINAÇÃO -->
+        <div id="paging" class="tab-content active">
+            <div class="info-box">
+                <div class="info-header" onclick="toggleInfo('paging-info')">
+                    <span>ℹ️ O que é Paginação?</span>
+                    <span id="paging-info-icon">▼</span>
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">
-                    Número de Frames: {pageFrames}
-                  </label>
-                  <input
-                    type="range"
-                    min="2"
-                    max="6"
-                    value={pageFrames}
-                    onChange={(e) => {
-                      setPageFrames(parseInt(e.target.value));
-                      resetPagingSimulation();
-                    }}
-                    className="w-full"
-                  />
+                <div id="paging-info" class="info-content">
+                    <p style="margin-bottom: 10px;">
+                        A paginação divide a memória em blocos de tamanho fixo chamados <strong>páginas</strong> (memória lógica) 
+                        e <strong>frames</strong> (memória física). Quando um processo precisa de uma página que não está na memória, 
+                        ocorre um <strong>page fault</strong> e o sistema deve buscar a página.
+                    </p>
+                    <p><strong>Algoritmos de Substituição:</strong></p>
+                    <ul style="margin-left: 20px; margin-top: 5px;">
+                        <li><strong>FIFO:</strong> Remove a página mais antiga (primeira a entrar)</li>
+                        <li><strong>LRU:</strong> Remove a página menos recentemente usada</li>
+                        <li><strong>OPT:</strong> Remove a página que será usada mais tarde (ótimo teórico)</li>
+                    </ul>
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">
-                    Velocidade
-                  </label>
-                  <input
-                    type="range"
-                    min="200"
-                    max="2000"
-                    step="200"
-                    value={speed}
-                    onChange={(e) => setSpeed(parseInt(e.target.value))}
-                    className="w-full"
-                  />
-                  <span className="text-xs text-gray-600">
-                    {speed}ms por passo
-                  </span>
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={addPage}
-                    className="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 flex items-center justify-center gap-2"
-                  >
-                    <Plus size={16} /> Página Aleatória
-                  </button>
-                  <button
-                    onClick={addMultiplePages}
-                    className="flex-1 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-                  >
-                    Sequência Padrão
-                  </button>
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setIsPlaying(!isPlaying)}
-                    disabled={pages.length === 0 || currentPageIndex >= pages.length}
-                    className="flex-1 bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 disabled:bg-gray-400 flex items-center justify-center gap-2"
-                  >
-                    {isPlaying ? <Pause size={16} /> : <Play size={16} />}
-                    {isPlaying ? 'Pausar' : 'Executar'}
-                  </button>
-                  <button
-                    onClick={simulatePageStep}
-                    disabled={pages.length === 0 || currentPageIndex >= pages.length}
-                    className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:bg-gray-400"
-                  >
-                    Passo
-                  </button>
-                  <button
-                    onClick={resetPagingSimulation}
-                    className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 flex items-center gap-2"
-                  >
-                    <RotateCcw size={16} /> Reset
-                  </button>
-                </div>
-
-                <div className="bg-gray-100 p-4 rounded">
-                  <div className="grid grid-cols-2 gap-4 text-center">
-                    <div>
-                      <div className="text-2xl font-bold text-red-600">{pageFaults}</div>
-                      <div className="text-sm text-gray-600">Page Faults</div>
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold text-green-600">{pageHits}</div>
-                      <div className="text-sm text-gray-600">Page Hits</div>
-                    </div>
-                  </div>
-                  {(pageFaults + pageHits) > 0 && (
-                    <div className="mt-2 text-center">
-                      <div className="text-sm text-gray-600">Taxa de Acerto</div>
-                      <div className="text-lg font-bold text-blue-600">
-                        {((pageHits / (pageFaults + pageHits)) * 100).toFixed(1)}%
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
             </div>
 
-            {/* Visualização */}
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h3 className="font-bold text-lg mb-4">Memória Física (Frames)</h3>
-              
-              <div className="space-y-3">
-                {Array(pageFrames).fill(0).map((_, idx) => {
-                  const frame = memory[idx];
-                  return (
-                    <div key={idx} className="flex items-center gap-3">
-                      <div className="text-sm font-medium w-16">Frame {idx}</div>
-                      <div className={`flex-1 h-12 rounded border-2 flex items-center justify-center text-lg font-bold ${
-                        frame 
-                          ? 'bg-blue-500 text-white border-blue-600' 
-                          : 'bg-gray-100 border-gray-300 text-gray-400'
-                      }`}>
-                        {frame ? `P${frame.page}` : 'Vazio'}
-                      </div>
+            <div class="grid-2">
+                <div class="card">
+                    <h3>⚙️ Controles</h3>
+                    
+                    <div class="control-group">
+                        <label>Algoritmo de Substituição</label>
+                        <select id="algorithm" onchange="resetPaging()">
+                            <option value="FIFO">FIFO (First In First Out)</option>
+                            <option value="LRU">LRU (Least Recently Used)</option>
+                            <option value="OPT">OPT (Optimal)</option>
+                        </select>
                     </div>
-                  );
-                })}
-              </div>
 
-              <div className="mt-6">
-                <h4 className="font-semibold mb-2">Sequência de Páginas:</h4>
-                <div className="flex flex-wrap gap-2">
-                  {pages.map((page, idx) => (
-                    <div
-                      key={idx}
-                      className={`w-10 h-10 rounded flex items-center justify-center font-bold border-2 ${
-                        idx < currentPageIndex
-                          ? pageHistory[idx]?.fault
-                            ? 'bg-red-500 text-white border-red-600'
-                            : 'bg-green-500 text-white border-green-600'
-                          : idx === currentPageIndex
-                          ? 'bg-yellow-400 border-yellow-600 animate-pulse'
-                          : 'bg-gray-200 border-gray-300'
-                      }`}
-                    >
-                      {page}
+                    <div class="control-group">
+                        <label>Número de Frames: <span id="frames-value">4</span></label>
+                        <input type="range" id="page-frames" min="2" max="6" value="4" oninput="updateFrames(this.value)">
                     </div>
-                  ))}
-                {processes.length === 0 && (
-                  <div className="text-gray-500 text-sm text-center py-4">
-                    Nenhum processo criado
-                  </div>
-                )}
-              </div>
-            </div>
 
-            {/* Visualização RAM e SWAP */}
-            <div className="lg:col-span-2 space-y-6">
-              {/* RAM */}
-              <div className="bg-white p-6 rounded-lg shadow">
-                <h3 className="font-bold text-lg mb-4">💾 RAM (Memória Principal)</h3>
-                
-                <div className="grid grid-cols-8 gap-2">
-                  {ramSlots.map((slot, idx) => {
-                    const process = processes.find(p => p.id === slot);
-                    return (
-                      <div
-                        key={idx}
-                        className={`h-16 rounded border-2 flex flex-col items-center justify-center text-xs font-bold ${
-                          process
-                            ? `${process.color} bg-opacity-70 border-gray-600`
-                            : 'bg-gray-100 border-gray-300 text-gray-400'
-                        }`}
-                      >
-                        <div className="text-[10px] text-gray-600">{idx}</div>
-                        {process ? `P${process.id}` : '—'}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="mt-4 bg-green-50 p-3 rounded">
-                  <div className="text-sm">
-                    <span className="text-gray-600">Utilização da RAM:</span>
-                    <span className="ml-2 font-bold">
-                      {ramSlots.filter(s => s !== null).length}/{ramSlots.length} blocos
-                    </span>
-                    <div className="mt-2 bg-gray-200 rounded-full h-3 overflow-hidden">
-                      <div 
-                        className="bg-green-600 h-full transition-all duration-300"
-                        style={{ width: `${(ramSlots.filter(s => s !== null).length / ramSlots.length) * 100}%` }}
-                      />
+                    <div class="control-group">
+                        <label>Velocidade: <span id="speed-value">1000</span>ms</label>
+                        <input type="range" id="speed" min="200" max="2000" step="200" value="1000" oninput="updateSpeed(this.value)">
                     </div>
-                  </div>
-                </div>
-              </div>
 
-              {/* Espaço de SWAP */}
-              <div className="bg-white p-6 rounded-lg shadow">
-                <h3 className="font-bold text-lg mb-4">💿 Espaço de SWAP (Disco)</h3>
-                
-                {swapSpace.length > 0 ? (
-                  <div className="grid grid-cols-4 gap-3">
-                    {swapSpace.map(processId => {
-                      const process = processes.find(p => p.id === processId);
-                      return (
-                        <div
-                          key={processId}
-                          className={`p-4 rounded border-2 ${process?.color} bg-opacity-30 text-center`}
-                        >
-                          <div className="font-bold text-lg">P{processId}</div>
-                          <div className="text-xs text-gray-600 mt-1">
-                            {process?.size} blocos
-                          </div>
+                    <div class="button-group">
+                        <button class="btn-primary" onclick="addRandomPage()">➕ Página Aleatória</button>
+                        <button class="btn-success" onclick="addDefaultSequence()">📋 Sequência Padrão</button>
+                    </div>
+
+                    <div class="button-group">
+                        <button class="btn-warning" id="play-btn" onclick="togglePlay()">▶️ Executar</button>
+                        <button class="btn-primary" onclick="stepPage()" id="step-btn">⏭️ Passo</button>
+                        <button class="btn-secondary" onclick="resetPaging()">🔄 Reset</button>
+                    </div>
+
+                    <div class="stats-box">
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <div class="stat-value" style="color: #e74c3c;" id="page-faults">0</div>
+                                <div class="stat-label">Page Faults</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value" style="color: #27ae60;" id="page-hits">0</div>
+                                <div class="stat-label">Page Hits</div>
+                            </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="text-gray-500 text-center py-8 bg-gray-50 rounded">
-                    Espaço de swap vazio
-                  </div>
-                )}
-
-                <div className="mt-4 bg-orange-50 p-3 rounded">
-                  <div className="text-sm">
-                    <span className="text-gray-600">Processos em SWAP:</span>
-                    <span className="ml-2 font-bold">{swapSpace.length}</span>
-                  </div>
+                        <div id="hit-rate" style="text-align: center; margin-top: 15px; display: none;">
+                            <div class="stat-label">Taxa de Acerto</div>
+                            <div class="stat-value" style="color: #3498db; font-size: 1.5em;" id="hit-rate-value">0%</div>
+                        </div>
+                    </div>
                 </div>
-              </div>
 
-              {/* Estatísticas */}
-              <div className="bg-white p-6 rounded-lg shadow">
-                <h3 className="font-bold text-lg mb-4">📊 Estatísticas do Sistema</h3>
-                
-                <div className="grid grid-cols-3 gap-4 text-center">
-                  <div className="bg-blue-50 p-4 rounded">
-                    <div className="text-2xl font-bold text-blue-600">
-                      {processes.filter(p => p.location === 'ram').length}
+                <div class="card">
+                    <h3>💾 Memória Física (Frames)</h3>
+                    <div id="memory-frames"></div>
+
+                    <div style="margin-top: 25px;">
+                        <h4 style="margin-bottom: 12px;">Sequência de Páginas:</h4>
+                        <div id="page-sequence" class="page-sequence"></div>
                     </div>
-                    <div className="text-xs text-gray-600 mt-1">Em RAM</div>
-                  </div>
-                  <div className="bg-orange-50 p-4 rounded">
-                    <div className="text-2xl font-bold text-orange-600">
-                      {swapSpace.length}
-                    </div>
-                    <div className="text-xs text-gray-600 mt-1">Em SWAP</div>
-                  </div>
-                  <div className="bg-gray-50 p-4 rounded">
-                    <div className="text-2xl font-bold text-gray-600">
-                      {processes.filter(p => p.location === 'disk').length}
-                    </div>
-                    <div className="text-xs text-gray-600 mt-1">Em Disco</div>
-                  </div>
                 </div>
-              </div>
             </div>
-          </div>
         </div>
-      )}
 
-      {/* Rodapé com informações */}
-      <div className="mt-8 pt-6 border-t border-gray-300 text-center text-sm text-gray-600">
-        <p>
-          <strong>Grupo 4:</strong> Felipe, Nadia, Olivie, Marcos Gabriel | 
-          <strong className="ml-2">Professor:</strong> Rallyson Ferreira
-        </p>
-        <p className="mt-1">
-          Trabalho Prático de Sistemas Operacionais - UFAM/ICET 2024
-        </p>
-      </div>
+        <!-- TAB: SEGMENTAÇÃO -->
+        <div id="segmentation" class="tab-content">
+            <div class="info-box">
+                <div class="info-header" onclick="toggleInfo('seg-info')">
+                    <span>ℹ️ O que é Segmentação?</span>
+                    <span id="seg-info-icon">▼</span>
+                </div>
+                <div id="seg-info" class="info-content">
+                    <p style="margin-bottom: 10px;">
+                        A segmentação divide a memória em blocos de tamanho <strong>variável</strong> chamados segmentos, 
+                        que correspondem a unidades lógicas do programa (código, dados, pilha). Cada segmento tem uma 
+                        base (endereço inicial) e um limite (tamanho).
+                    </p>
+                    <p>
+                        <strong>Vantagens:</strong> Proteção lógica, compartilhamento facilitado<br>
+                        <strong>Desafios:</strong> Fragmentação externa, gerenciamento complexo
+                    </p>
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="card">
+                    <h3>📦 Segmentos</h3>
+                    <button class="btn-primary" onclick="addSegment()" style="width: 100%; margin-bottom: 15px;">
+                        ➕ Criar Segmento
+                    </button>
+                    <div id="segment-list" class="segment-list"></div>
+                </div>
+
+                <div class="card">
+                    <h3>💾 Memória Física</h3>
+                    <div id="segment-memory" class="memory-grid"></div>
+                    
+                    <div class="stats-box">
+                        <h4 style="margin-bottom: 10px;">📊 Estatísticas:</h4>
+                        <div style="font-size: 0.9em;">
+                            <div style="margin-bottom: 8px;">
+                                <span style="color: #7f8c8d;">Blocos Ocupados:</span>
+                                <strong id="seg-occupied">0/16</strong>
+                            </div>
+                            <div>
+                                <span style="color: #7f8c8d;">Fragmentação:</span>
+                                <strong id="seg-fragmentation">0 buracos</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: SWAPPING -->
+        <div id="swapping" class="tab-content">
+            <div class="info-box">
+                <div class="info-header" onclick="toggleInfo('swap-info')">
+                    <span>ℹ️ O que é Swapping?</span>
+                    <span id="swap-info-icon">▼</span>
+                </div>
+                <div id="swap-info" class="info-content">
+                    <p style="margin-bottom: 10px;">
+                        Swapping é uma técnica de gerenciamento de memória que move processos inteiros entre a 
+                        <strong>memória principal (RAM)</strong> e o <strong>espaço de swap (disco)</strong>. 
+                        Quando a RAM está cheia, processos inativos são movidos para o disco para liberar espaço.
+                    </p>
+                    <p>
+                        <strong>Swap In:</strong> Trazer processo do disco para RAM<br>
+                        <strong>Swap Out:</strong> Mover processo da RAM para disco<br>
+                        <strong>Desafio:</strong> Operações de I/O são lentas
+                    </p>
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="card">
+                    <h3>⚡ Processos</h3>
+                    <button class="btn-primary" onclick="addProcess()" style="width: 100%; margin-bottom: 15px;">
+                        ➕ Criar Processo
+                    </button>
+                    <div id="process-list" class="process-list"></div>
+                </div>
+
+                <div class="card">
+                    <h3>💾 RAM (Memória Principal)</h3>
+                    <div id="ram-memory" class="ram-grid"></div>
+                    
+                    <div class="stats-box" style="background: #e8f8f5;">
+                        <div style="font-size: 0.9em;">
+                            <span style="color: #555;">Utilização da RAM:</span>
+                            <strong id="ram-usage">0/8 blocos</strong>
+                        </div>
+                        <div class="progress-bar">
+                            <div id="ram-progress" class="progress-fill" style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <h3 style="margin-top: 25px;">💿 Espaço de SWAP (Disco)</h3>
+                    <div id="swap-space"></div>
+
+                    <div class="stats-box" style="background: #fff3e0; margin-top: 15px;">
+                        <div style="font-size: 0.9em;">
+                            <span style="color: #555;">Processos em SWAP:</span>
+                            <strong id="swap-count">0</strong>
+                        </div>
+                    </div>
+
+                    <h3 style="margin-top: 25px;">📊 Estatísticas do Sistema</h3>
+                    <div class="grid-3">
+                        <div class="stat-card" style="background: #e8f4f8;">
+                            <div class="stat-value" style="color: #3498db; font-size: 1.8em;" id="proc-ram">0</div>
+                            <div class="stat-label">Em RAM</div>
+                        </div>
+                        <div class="stat-card" style="background: #fff3e0;">
+                            <div class="stat-value" style="color: #f39c12; font-size: 1.8em;" id="proc-swap">0</div>
+                            <div class="stat-label">Em SWAP</div>
+                        </div>
+                        <div class="stat-card" style="background: #f8f9fa;">
+                            <div class="stat-value" style="color: #95a5a6; font-size: 1.8em;" id="proc-disk">0</div>
+                            <div class="stat-label">Em Disco</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p><strong>Grupo 4:</strong> Felipe, Nadia, Olivie, Marcos Gabriel | <strong>Professor:</strong> Rallyson Ferreira</p>
+            <p>Trabalho Prático de Sistemas Operacionais - UFAM/ICET 2024</p>
+        </footer>
     </div>
-  );
-};
 
-export default MemoryManagementSimulator;
-                  {pages.length === 0 && (
-                    <div className="text-gray-500 text-sm">
-                      Adicione páginas para começar a simulação
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+    <script>
+        // Estado Global
+        let state = {
+            paging: {
+                pages: [],
+                memory: [],
+                frames: 4,
+                algorithm: 'FIFO',
+                currentIndex: 0,
+                pageFaults: 0,
+                pageHits: 0,
+                history: [],
+                playing: false,
+                speed: 1000
+            },
+            segmentation: {
+                segments: [],
+                memory: Array(16).fill(null),
+                nextId: 1
+            },
+            swapping: {
+                processes: [],
+                ram: Array(8).fill(null),
+                swap: [],
+                nextId: 1
+            }
+        };
 
-      {/* Segmentação */}
-      {activeTab === 'segmentation' && (
-        <div className="space-y-6">
-          <InfoSection title="O que é Segmentação?" id="segmentation-info">
-            <p className="mb-2">
-              A segmentação divide a memória em blocos de tamanho <strong>variável</strong> chamados segmentos, 
-              que correspondem a unidades lógicas do programa (código, dados, pilha). Cada segmento tem uma 
-              base (endereço inicial) e um limite (tamanho).
-            </p>
-            <p>
-              <strong>Vantagens:</strong> Proteção lógica, compartilhamento facilitado<br/>
-              <strong>Desafios:</strong> Fragmentação externa, gerenciamento complexo
-            </p>
-          </InfoSection>
+        const colors = ['#3498db', '#27ae60', '#9b59b6', '#f1c40f', '#e74c3c', '#1abc9c'];
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Controles */}
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h3 className="font-bold text-lg mb-4">Segmentos</h3>
-              
-              <button
-                onClick={addSegment}
-                className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 flex items-center justify-center gap-2 mb-4"
-              >
-                <Plus size={16} /> Criar Segmento
-              </button>
+        // Funções de Navegação
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(tabName).classList.add('active');
+            
+            if (tabName === 'paging') renderPaging();
+            if (tabName === 'segmentation') renderSegmentation();
+            if (tabName === 'swapping') renderSwapping();
+        }
 
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {segments.map(segment => (
-                  <div
-                    key={segment.id}
-                    className={`p-3 rounded border-2 ${segment.color} bg-opacity-20`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-bold">Seg {segment.id}</span>
-                      <button
-                        onClick={() => removeSegment(segment.id)}
-                        className="text-red-600 hover:text-red-800"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                    <div className="text-sm mb-2">
-                      Tamanho: {segment.size} blocos
-                      {segment.allocated && (
-                        <div>Base: {segment.base}</div>
-                      )}
-                    </div>
-                    {!segment.allocated ? (
-                      <button
-                        onClick={() => allocateSegment(segment.id)}
-                        className="w-full bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700"
-                      >
-                        Alocar
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => deallocateSegment(segment.id)}
-                        className="w-full bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700"
-                      >
-                        Liberar
-                      </button>
-                    )}
-                  </div>
-                ))}
-                {segments.length === 0 && (
-                  <div className="text-gray-500 text-sm text-center py-4">
-                    Nenhum segmento criado
-                  </div>
-                )}
-              </div>
-            </div>
+        function toggleInfo(id) {
+            const content = document.getElementById(id);
+            const icon = document.getElementById(id + '-icon');
+            content.classList.toggle('show');
+            icon.textContent = content.classList.contains('show') ? '▲' : '▼';
+        }
 
-            {/* Visualização da Memória */}
-            <div className="lg:col-span-2 bg-white p-6 rounded-lg shadow">
-              <h3 className="font-bold text-lg mb-4">Memória Física</h3>
-              
-              <div className="grid grid-cols-8 gap-2">
-                {segmentMemory.map((slot, idx) => {
-                  const segment = segments.find(s => s.id === slot);
-                  return (
-                    <div
-                      key={idx}
-                      className={`h-16 rounded border-2 flex flex-col items-center justify-center text-xs font-bold ${
-                        segment
-                          ? `${segment.color} bg-opacity-70 border-gray-600`
-                          : 'bg-gray-100 border-gray-300 text-gray-400'
-                      }`}
-                    >
-                      <div className="text-[10px] text-gray-600">{idx}</div>
-                      {segment ? `S${segment.id}` : '—'}
-                    </div>
-                  );
-                })}
-              </div>
+        // ============ PAGINAÇÃO ============
+        function updateFrames(value) {
+            state.paging.frames = parseInt(value);
+            document.getElementById('frames-value').textContent = value;
+            resetPaging();
+        }
 
-              <div className="mt-6 bg-blue-50 p-4 rounded">
-                <h4 className="font-semibold mb-2">Estatísticas:</h4>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="text-gray-600">Blocos Ocupados:</span>
-                    <span className="ml-2 font-bold">
-                      {segmentMemory.filter(s => s !== null).length}/{segmentMemory.length}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Fragmentação:</span>
-                    <span className="ml-2 font-bold">
-                      {(() => {
-                        let holes = 0;
-                        let inHole = false;
-                        segmentMemory.forEach(slot => {
-                          if (slot === null && !inHole) {
-                            holes++;
-                            inHole = true;
-                          } else if (slot !== null) {
-                            inHole = false;
-                          }
+        function updateSpeed(value) {
+            state.paging.speed = parseInt(value);
+            document.getElementById('speed-value').textContent = value;
+        }
+
+        function addRandomPage() {
+            const page = Math.floor(Math.random() * 10);
+            state.paging.pages.push(page);
+            renderPaging();
+        }
+
+        function addDefaultSequence() {
+            state.paging.pages = [1, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5];
+            resetPaging();
+        }
+
+        function resetPaging() {
+            state.paging.algorithm = document.getElementById('algorithm').value;
+            state.paging.memory = [];
+            state.paging.currentIndex = 0;
+            state.paging.pageFaults = 0;
+            state.paging.pageHits = 0;
+            state.paging.history = [];
+            state.paging.playing = false;
+            renderPaging();
+        }
+
+        function togglePlay() {
+            state.paging.playing = !state.paging.playing;
+            document.getElementById('play-btn').innerHTML = state.paging.playing ? '⏸️ Pausar' : '▶️ Executar';
+            if (state.paging.playing) autoPlay();
+        }
+
+        function autoPlay() {
+            if (!state.paging.playing) return;
+            if (state.paging.currentIndex >= state.paging.pages.length) {
+                state.paging.playing = false;
+                document.getElementById('play-btn').innerHTML = '▶️ Executar';
+                return;
+            }
+            stepPage();
+            setTimeout(autoPlay, state.paging.speed);
+        }
+
+        function stepPage() {
+            if (state.paging.currentIndex >= state.paging.pages.length) return;
+
+            const page = state.paging.pages[state.paging.currentIndex];
+            let fault = false;
+
+            const existing = state.paging.memory.find(p => p.page === page);
+            
+            if (existing) {
+                state.paging.pageHits++;
+                if (state.paging.algorithm === 'LRU') {
+                    existing.lastUsed = state.paging.currentIndex;
+                }
+            } else {
+                state.paging.pageFaults++;
+                fault = true;
+
+                if (state.paging.memory.length < state.paging.frames) {
+                    state.paging.memory.push({
+                        page,
+                        loadedAt: state.paging.currentIndex,
+                        lastUsed: state.paging.currentIndex
+                    });
+                } else {
+                    if (state.paging.algorithm === 'FIFO') {
+                        state.paging.memory.shift();
+                        state.paging.memory.push({
+                            page,
+                            loadedAt: state.paging.currentIndex,
+                            lastUsed: state.paging.currentIndex
                         });
-                        return holes;
-                      })()} buracos
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+                    } else if (state.paging.algorithm === 'LRU') {
+                        let lruIdx = 0;
+                        let minUsed = state.paging.memory[0].lastUsed;
+                        for (let i = 1; i < state.paging.memory.length; i++) {
+                            if (state.paging.memory[i].lastUsed < minUsed) {
+                                minUsed = state.paging.memory[i].lastUsed;
+                                lruIdx = i;
+                            }
+                        }
+                        state.paging.memory[lruIdx] = {
+                            page,
+                            loadedAt: state.paging.currentIndex,
+                            lastUsed: state.paging.currentIndex
+                        };
+                    } else if (state.paging.algorithm === 'OPT') {
+                        let replaceIdx = 0;
+                        let farthest = -1;
+                        for (let i = 0; i < state.paging.memory.length; i++) {
+                            const futurePages = state.paging.pages.slice(state.paging.currentIndex + 1);
+                            let nextUse = futurePages.indexOf(state.paging.memory[i].page);
+                            if (nextUse === -1) nextUse = Infinity;
+                            if (nextUse > farthest) {
+                                farthest = nextUse;
+                                replaceIdx = i;
+                            }
+                        }
+                        state.paging.memory[replaceIdx] = {
+                            page,
+                            loadedAt: state.paging.currentIndex,
+                            lastUsed: state.paging.currentIndex
+                        };
+                    }
+                }
+            }
 
-      {/* Swapping */}
-      {activeTab === 'swapping' && (
-        <div className="space-y-6">
-          <InfoSection title="O que é Swapping?" id="swapping-info">
-            <p className="mb-2">
-              Swapping é uma técnica de gerenciamento de memória que move processos inteiros entre a 
-              <strong> memória principal (RAM)</strong> e o <strong>espaço de swap (disco)</strong>. 
-              Quando a RAM está cheia, processos inativos são movidos para o disco para liberar espaço.
-            </p>
-            <p>
-              <strong>Swap In:</strong> Trazer processo do disco para RAM<br/>
-              <strong>Swap Out:</strong> Mover processo da RAM para disco<br/>
-              <strong>Desafio:</strong> Operações de I/O são lentas
-            </p>
-          </InfoSection>
+            state.paging.history.push({ fault });
+            state.paging.currentIndex++;
+            renderPaging();
+        }
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Controles */}
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h3 className="font-bold text-lg mb-4">Processos</h3>
-              
-              <button
-                onClick={addProcess}
-                className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 flex items-center justify-center gap-2 mb-4"
-              >
-                <Plus size={16} /> Criar Processo
-              </button>
-
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {processes.map(process => (
-                  <div
-                    key={process.id}
-                    className={`p-3 rounded border-2 ${process.color} bg-opacity-20`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-bold">P{process.id}</span>
-                      <button
-                        onClick={() => removeProcess(process.id)}
-                        className="text-red-600 hover:text-red-800"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+        function renderPaging() {
+            // Atualizar frames
+            const framesHtml = Array(state.paging.frames).fill(0).map((_, idx) => {
+                const frame = state.paging.memory[idx];
+                return `
+                    <div class="memory-frame">
+                        <div class="frame-label">Frame ${idx}</div>
+                        <div class="frame-slot ${frame ? 'filled' : 'empty'}">
+                            ${frame ? 'P' + frame.page : 'Vazio'}
+                        </div>
                     </div>
-                    <div className="text-sm mb-2">
-                      Tamanho: {process.size} blocos<br/>
-                      Local: {process.location === 'ram' ? '🟢 RAM' : process.location === 'swap' ? '🔴 SWAP' : '⚪ Disco'}
+                `;
+            }).join('');
+            document.getElementById('memory-frames').innerHTML = framesHtml;
+
+            // Atualizar sequência de páginas
+            const sequenceHtml = state.paging.pages.length > 0 
+                ? state.paging.pages.map((page, idx) => {
+                    let className = 'pending';
+                    if (idx < state.paging.currentIndex) {
+                        className = state.paging.history[idx].fault ? 'fault' : 'hit';
+                    } else if (idx === state.paging.currentIndex) {
+                        className = 'current';
+                    }
+                    return `<div class="page-item ${className}">${page}</div>`;
+                }).join('')
+                : '<div style="color: #7f8c8d; font-size: 0.9em;">Adicione páginas para começar a simulação</div>';
+            document.getElementById('page-sequence').innerHTML = sequenceHtml;
+
+            // Atualizar estatísticas
+            document.getElementById('page-faults').textContent = state.paging.pageFaults;
+            document.getElementById('page-hits').textContent = state.paging.pageHits;
+            
+            const total = state.paging.pageFaults + state.paging.pageHits;
+            if (total > 0) {
+                const hitRate = ((state.paging.pageHits / total) * 100).toFixed(1);
+                document.getElementById('hit-rate').style.display = 'block';
+                document.getElementById('hit-rate-value').textContent = hitRate + '%';
+            } else {
+                document.getElementById('hit-rate').style.display = 'none';
+            }
+
+            // Atualizar botões
+            const hasPages = state.paging.pages.length > 0;
+            const canStep = hasPages && state.paging.currentIndex < state.paging.pages.length;
+            document.getElementById('play-btn').disabled = !canStep;
+            document.getElementById('step-btn').disabled = !canStep;
+        }
+
+        // ============ SEGMENTAÇÃO ============
+        function addSegment() {
+            const sizes = [2, 3, 4];
+            const size = sizes[Math.floor(Math.random() * sizes.length)];
+            const color = colors[state.segmentation.nextId % colors.length];
+            
+            state.segmentation.segments.push({
+                id: state.segmentation.nextId,
+                size,
+                color,
+                allocated: false,
+                base: null
+            });
+            state.segmentation.nextId++;
+            renderSegmentation();
+        }
+
+        function allocateSegment(id) {
+            const segment = state.segmentation.segments.find(s => s.id === id);
+            if (!segment || segment.allocated) return;
+
+            // First Fit
+            let base = -1;
+            for (let i = 0; i <= state.segmentation.memory.length - segment.size; i++) {
+                let fits = true;
+                for (let j = 0; j < segment.size; j++) {
+                    if (state.segmentation.memory[i + j] !== null) {
+                        fits = false;
+                        break;
+                    }
+                }
+                if (fits) {
+                    base = i;
+                    break;
+                }
+            }
+
+            if (base !== -1) {
+                for (let i = 0; i < segment.size; i++) {
+                    state.segmentation.memory[base + i] = id;
+                }
+                segment.allocated = true;
+                segment.base = base;
+                renderSegmentation();
+            } else {
+                alert('Não há espaço contíguo suficiente na memória!');
+            }
+        }
+
+        function deallocateSegment(id) {
+            state.segmentation.memory = state.segmentation.memory.map(slot => 
+                slot === id ? null : slot
+            );
+            const segment = state.segmentation.segments.find(s => s.id === id);
+            if (segment) {
+                segment.allocated = false;
+                segment.base = null;
+            }
+            renderSegmentation();
+        }
+
+        function removeSegment(id) {
+            deallocateSegment(id);
+            state.segmentation.segments = state.segmentation.segments.filter(s => s.id !== id);
+            renderSegmentation();
+        }
+
+        function renderSegmentation() {
+            // Renderizar lista de segmentos
+            const segmentsHtml = state.segmentation.segments.length > 0
+                ? state.segmentation.segments.map(seg => `
+                    <div class="segment-item" style="border-color: ${seg.color}; background: ${seg.color}20;">
+                        <div class="item-header">
+                            <span class="item-title">Segmento ${seg.id}</span>
+                            <button class="btn-danger" onclick="removeSegment(${seg.id})" 
+                                    style="padding: 5px 10px; font-size: 0.85em;">🗑️</button>
+                        </div>
+                        <div class="item-info">
+                            Tamanho: ${seg.size} blocos
+                            ${seg.allocated ? `<br>Base: ${seg.base}` : ''}
+                        </div>
+                        ${!seg.allocated 
+                            ? `<button class="btn-success" onclick="allocateSegment(${seg.id})" 
+                                      style="width: 100%; padding: 8px;">Alocar</button>`
+                            : `<button class="btn-danger" onclick="deallocateSegment(${seg.id})" 
+                                      style="width: 100%; padding: 8px;">Liberar</button>`
+                        }
                     </div>
-                    {process.location === 'disk' && (
-                      <button
-                        onClick={() => swapIn(process.id)}
-                        className="w-full bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700"
-                      >
-                        Swap In
-                      </button>
-                    )}
-                    {process.location === 'ram' && (
-                      <button
-                        onClick={() => swapOut(process.id)}
-                        className="w-full bg-orange-600 text-white px-3 py-1 rounded text-sm hover:bg-orange-700"
-                      >
-                        Swap Out
-                      </button>
-                    )}
-                    {process.location === 'swap' && (
-                      <button
-                        onClick={() => swapIn(process.id)}
-                        className="w-full bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
-                      >
-                        Restaurar p/ RAM
-                      </button>
-                    )}
-                  </div>
-                ))}
+                `).join('')
+                : '<div class="empty-state">Nenhum segmento criado</div>';
+            document.getElementById('segment-list').innerHTML = segmentsHtml;
+
+            // Renderizar memória
+            const memoryHtml = state.segmentation.memory.map((slot, idx) => {
+                const segment = state.segmentation.segments.find(s => s.id === slot);
+                return `
+                    <div class="memory-block ${segment ? '' : 'empty'}" 
+                         style="${segment ? `background: ${segment.color}70; border-color: ${segment.color};` : ''}">
+                        <div class="block-index">${idx}</div>
+                        <div>${segment ? 'S' + segment.id : '—'}</div>
+                    </div>
+                `;
+            }).join('');
+            document.getElementById('segment-memory').innerHTML = memoryHtml;
+
+            // Estatísticas
+            const occupied = state.segmentation.memory.filter(s => s !== null).length;
+            document.getElementById('seg-occupied').textContent = `${occupied}/${state.segmentation.memory.length}`;
+            
+            // Calcular fragmentação (número de buracos)
+            let holes = 0;
+            let inHole = false;
+            state.segmentation.memory.forEach(slot => {
+                if (slot === null && !inHole) {
+                    holes++;
+                    inHole = true;
+                } else if (slot !== null) {
+                    inHole = false;
+                }
+            });
+            document.getElementById('seg-fragmentation').textContent = `${holes} buraco${holes !== 1 ? 's' : ''}`;
+        }
+
+        // ============ SWAPPING ============
+        function addProcess() {
+            const sizes = [1, 2, 3];
+            const size = sizes[Math.floor(Math.random() * sizes.length)];
+            const color = colors[state.swapping.nextId % colors.length];
+            
+            state.swapping.processes.push({
+                id: state.swapping.nextId,
+                size,
+                color,
+                location: 'disk',
+                ramBase: null
+            });
+            state.swapping.nextId++;
+            renderSwapping();
+        }
+
+        function swapIn(id) {
+            const process = state.swapping.processes.find(p => p.id === id);
+            if (!process || process.location === 'ram') return;
+
+            // Encontrar espaço na RAM
+            let base = -1;
+            for (let i = 0; i <= state.swapping.ram.length - process.size; i++) {
+                let fits = true;
+                for (let j = 0; j < process.size; j++) {
+                    if (state.swapping.ram[i + j] !== null) {
+                        fits = false;
+                        break;
+                    }
+                }
+                if (fits) {
+                    base = i;
+                    break;
+                }
+            }
+
+            if (base !== -1) {
+                for (let i = 0; i < process.size; i++) {
+                    state.swapping.ram[base + i] = id;
+                }
+                state.swapping.swap = state.swapping.swap.filter(pid => pid !== id);
+                process.location = 'ram';
+                process.ramBase = base;
+                renderSwapping();
+            } else {
+                alert('Não há espaço suficiente na RAM!');
+            }
+        }
+
+        function swapOut(id) {
+            state.swapping.ram = state.swapping.ram.map(slot => slot === id ? null : slot);
+            state.swapping.swap.push(id);
+            const process = state.swapping.processes.find(p => p.id === id);
+            if (process) {
+                process.location = 'swap';
+                process.ramBase = null;
+            }
+            renderSwapping();
+        }
+
+        function removeProcess(id) {
+            const process = state.swapping.processes.find(p => p.id === id);
+            if (process && process.location === 'ram') {
+                swapOut(id);
+            }
+            state.swapping.swap = state.swapping.swap.filter(pid => pid !== id);
+            state.swapping.processes = state.swapping.processes.filter(p => p.id !== id);
+            renderSwapping();
+        }
+
+        function renderSwapping() {
+            // Renderizar lista de processos
+            const processesHtml = state.swapping.processes.length > 0
+                ? state.swapping.processes.map(proc => {
+                    let locationEmoji = '⚪';
+                    let locationText = 'Disco';
+                    if (proc.location === 'ram') {
+                        locationEmoji = '🟢';
+                        locationText = 'RAM';
+                    } else if (proc.location === 'swap') {
+                        locationEmoji = '🔴';
+                        locationText = 'SWAP';
+                    }
+
+                    let actionButton = '';
+                    if (proc.location === 'disk' || proc.location === 'swap') {
+                        actionButton = `<button class="btn-success" onclick="swapIn(${proc.id})" 
+                                               style="width: 100%; padding: 8px;">Swap In</button>`;
+                    } else if (proc.location === 'ram') {
+                        actionButton = `<button class="btn-warning" onclick="swapOut(${proc.id})" 
+                                               style="width: 100%; padding: 8px;">Swap Out</button>`;
+                    }
+
+                    return `
+                        <div class="process-item" style="border-color: ${proc.color}; background: ${proc.color}20;">
+                            <div class="item-header">
+                                <span class="item-title">Processo P${proc.id}</span>
+                                <button class="btn-danger" onclick="removeProcess(${proc.id})" 
+                                        style="padding: 5px 10px; font-size: 0.85em;">🗑️</button>
+                            </div>
+                            <div class="item-info">
+                                Tamanho: ${proc.size} bloco${proc.size > 1 ? 's' : ''}<br>
+                                Local: ${locationEmoji} ${locationText}
+                            </div>
+                            ${actionButton}
+                        </div>
+                    `;
+                }).join('')
+                : '<div class="empty-state">Nenhum processo criado</div>';
+            document.getElementById('process-list').innerHTML = processesHtml;
+
+            // Renderizar RAM
+            const ramHtml = state.swapping.ram.map((slot, idx) => {
+                const process = state.swapping.processes.find(p => p.id === slot);
+                return `
+                    <div class="memory-block ${process ? '' : 'empty'}" 
+                         style="${process ? `background: ${process.color}70; border-color: ${process.color};` : ''}">
+                        <div class="block-index">${idx}</div>
+                        <div>${process ? 'P' + process.id : '—'}</div>
+                    </div>
+                `;
+            }).join('');
+            document.getElementById('ram-memory').innerHTML = ramHtml;
+
+            // Estatísticas RAM
+            const ramOccupied = state.swapping.ram.filter(s => s !== null).length;
+            document.getElementById('ram-usage').textContent = `${ramOccupied}/${state.swapping.ram.length} blocos`;
+            const ramPercent = (ramOccupied / state.swapping.ram.length) * 100;
+            document.getElementById('ram-progress').style.width = ramPercent + '%';
+
+            // Renderizar SWAP
+            const swapHtml = state.swapping.swap.length > 0
+                ? state.swapping.swap.map(procId => {
+                    const process = state.swapping.processes.find(p => p.id === procId);
+                    return `
+                        <div class="swap-item" style="border-color: ${process.color}; background: ${process.color}30;">
+                            <div style="font-weight: bold; font-size: 1.3em; margin-bottom: 5px;">P${procId}</div>
+                            <div style="font-size: 0.85em; color: #555;">${process.size} bloco${process.size > 1 ? 's' : ''}</div>
+                        </div>
+                    `;
+                }).join('')
+                : '<div class="empty-state">Espaço de swap vazio</div>';
+            document.getElementById('swap-space').innerHTML = swapHtml;
+
+            // Estatísticas gerais
+            document.getElementById('swap-count').textContent = state.swapping.swap.length;
+            document.getElementById('proc-ram').textContent = state.swapping.processes.filter(p => p.location === 'ram').length;
+            document.getElementById('proc-swap').textContent = state.swapping.swap.length;
+            document.getElementById('proc-disk').textContent = state.swapping.processes.filter(p => p.location === 'disk').length;
+        }
+
+        // Inicialização
+        renderPaging();
+        renderSegmentation();
+        renderSwapping();
+    </script>
+</body>
+</html>
